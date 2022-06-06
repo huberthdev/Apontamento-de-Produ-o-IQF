@@ -1,0 +1,27 @@
+Function ValidarCampos(Controles As Controls) As Boolean
+    
+On Error Resume Next
+    
+    Dim controle As Control
+    
+    For Each controle In Controles
+        
+        If controle.Tag <> Empty Then
+        
+            If controle.Text = Empty Then
+                If controle.Name Like "*btn*" Then
+                Else
+                   Erro ("O campo " & controle.Tag & " é obrigatório!")
+                   controle.SetFocus
+                   ValidarCampos = True
+                   Exit Function
+                End If
+            End If
+
+        End If
+        
+    Next controle
+    
+    ValidarCampos = False
+    
+End Function
