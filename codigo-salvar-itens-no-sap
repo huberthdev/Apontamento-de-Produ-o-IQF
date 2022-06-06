@@ -118,3 +118,285 @@ Fim:
         txtBarra.BackColor = &HFF&
             
     End With
+
+end sub
+
+'// Função que faz o input dos dados do sistema no SAP
+Private Function CarregarZPP0279() As Boolean
+    
+Dim i As Long, c As Integer, lin As Integer, nCol As String, cx As Byte, lt As Byte
+Dim centro As String, versao As String, data As String, lote As String, txtErro As String, msg As String
+   
+Dim lista As Object
+Dim sku As Variant, soma As Double, saldo As Double, ultReg As Variant
+    
+    CarregarZPP0279 = False
+    
+    If Conexao_SAP("ZPP0279") = False Then Exit Function
+    
+    On Error GoTo Fim
+    
+    centro = gCentro
+    data = lblData.Caption
+    lote = txtLote
+    
+    If cbVersao.Text = Empty Then
+        versao = "0001"
+    Else
+        versao = cbVersao.Text
+    End If
+    
+    With Me.lista
+        ultReg = .ListItems(.ListItems.Count).Text
+    End With
+    
+    If lote = Empty Then
+        Call Cod.Erro("O lote é obrigatório!")
+        Exit Function
+    End If
+    
+    With Session
+        
+        .findById("wnd[0]/usr/ctxtV_WERKS").Text = centro
+        .findById("wnd[0]/usr/txtV_VERID").Text = versao
+        
+        If ckDataHoje.value = True Then
+            .findById("wnd[0]/usr/chkV_FLG_LOTE").Selected = True
+            .findById("wnd[0]/usr/ctxtV_BUDAT").Text = VBA.Format(Date, "dd.mm.yyyy")
+        Else
+            .findById("wnd[0]/usr/chkV_FLG_LOTE").Selected = False
+            .findById("wnd[0]/usr/ctxtV_BUDAT").Text = data
+        End If
+        
+        .findById("wnd[0]/usr/txtV_BKTXT").Text = "SISTEMA SEMI AUTOMATICO"
+        
+        SQL = "SELECT CB, FORMATNUMBER(SUM(QTDE),2) FROM BD WHERE CANCELADO = 0 "
+        SQL = SQL & "AND CÓDIGO IN(" & texto & ") GROUP BY CB"
+        If Buscar = False Then Exit Function
+        
+        Set lista = .findById("wnd[0]/usr/tblZPP0203042TC100")
+        
+        On Error Resume Next
+        For i = 1 To lista.Columns.Count
+            nCol = lista.Columns(i).Title
+            If nCol = "Nº lote docum." Then
+                lt = i
+            ElseIf nCol = "Quant. Caixas" Then
+                cx = i
+            End If
+        Next i
+        On Error GoTo -1
+        
+        If cx = Empty Or lt = Empty Then GoTo Fim
+        
+        For i = 0 To TotalRegistros
+            .findById("wnd[0]/usr/tblZPP0203042TC100/ctxtWA_RM61B-MATNR[0," & i & "]").Text = resultado(0, i)
+            .findById("wnd[0]/usr/tblZPP0203042TC100/txtWA_RM61B-BOXMG[" & cx & "," & i & "]").Text = resultado(1, i)
+            .findById("wnd[0]").sendVKey 0
+            .findById("wnd[0]/usr/tblZPP0203042TC100/ctxtWA_RM61B-ACHARG[" & lt & "," & i & "]").Text = lote
+        Next i
+        
+        .findById("wnd[0]/usr/btn%#AUTOTEXT004").press
+        .findById("wnd[0]/tbar[1]/btn[8]").press
+
+        On Error Resume Next
+        lin = TotalRegistros + 2
+        For i = 0 To lin
+            .findById("wnd[1]/tbar[0]/btn[0]").press
+        Next i
+        On Error GoTo -1
+
+        msg = .findById("wnd[0]/sbar").Text
+        
+        If msg <> Empty Then
+            SQL = "INSERT INTO ERRO_AP(ERRO, USUARIO) VALUES('" & msg & "', '" & gUsuario & "')"
+            Call ExecuteSQL
+        End If
+        
+        On Error GoTo -1
+        On Error GoTo Fim
+        
+        Application.Wait Now() + VBA.TimeValue("00:00:05")
+        
+        Call modAutenticacao.MB51(1, texto, txtLote)
+        
+        SQL = "SELECT A.CB, FORMATNUMBER(SUM(A.QTDE * B.KG), 0) FROM BD A INNER JOIN PRODUTOS B ON A.CB = B.SKU WHERE A.CANCELADO = 0 "
+        SQL = SQL & "AND A.LOTE = '" & lote & "' AND A.CÓDIGO <= " & ultReg & " "
+        SQL = SQL & "AND A.CB IN(SELECT CB FROM BD WHERE CÓDIGO IN(" & texto & ")) GROUP BY A.CB"
+        
+        If Buscar = False Then Exit Function
+        
+        With Session
+            
+            Set lista = .findById("wnd[0]/usr/cntlGRID1/shellcont/shell")
+            
+            lin = lista.RowCount - 2
+            
+            If lin < 0 Then
+                CarregarZPP0279 = False
+                GoTo Fim
+            End If
+            
+            For c = 0 To lin
+                
+                For i = 0 To TotalRegistros
+                    
+                    sku = lista.GetCellValue(c, "MATNR")
+                    soma = VBA.FormatNumber(lista.GetCellValue(c, "MENGE"), 0)
+                    saldo = VBA.FormatNumber(resultado(1, i), 0)
+                    
+                    If resultado(0, i) = VBA.Abs(sku) Then
+                        If saldo > soma Then
+                            GrupoSKU.Add resultado(0, i)
+                        End If
+                    End If
+                Next i
+            
+            Next c
+            
+        End With
+        
+        CarregarZPP0279 = True
+        
+        Exit Function
+        
+Fim:
+    
+    SQL = "INSERT INTO ERRO_AP(ERRO, USUARIO) VALUES('Erro: ' & '" & Err.Description & "', '" & VBA.Environ("USERNAME") & "')"
+    Call ExecuteSQL
+    
+    Call Cod.Erro("Houve um erro no carregamento dos dados!" & vbNewLine & vbNewLine & "Ex.: SKU bloqueado por outro usuário/Sem ordem de apontamento criada")
+         
+    End With
+    
+End Function
+
+'// Código que valida se o saldo já foi apontado no SAP
+Sub MB51(Optional ByVal AG As Byte, Optional ByVal codigo As String, Optional ByVal lote As String)
+
+Dim i As Integer
+Dim msg As String
+    
+    If lote = Empty Then Exit Sub
+    gLote = lote
+    
+    If Conexao_SAP("MB51") = False Then Exit Sub
+    
+    With Session
+        
+        SQL = "SELECT DISTINCT CB FROM BD WHERE LOTE = '" & lote & "' AND CANCELADO = 0"
+        If codigo <> Empty Then
+            SQL = SQL & " AND CÓDIGO IN(" & codigo & ")"
+        End If
+        If Buscar = False Then Exit Sub
+        
+        .findById("wnd[0]/usr/ctxtWERKS-LOW").Text = gCentro
+        .findById("wnd[0]/usr/ctxtCHARG-LOW").Text = lote
+        .findById("wnd[0]/usr/ctxtBWART-LOW").Text = "131"
+        .findById("wnd[0]/usr/ctxtBWART-HIGH").Text = "132"
+
+        .findById("wnd[0]/usr/ctxtLGORT-LOW").Text = ""
+        .findById("wnd[0]/usr/ctxtLIFNR-LOW").Text = ""
+        .findById("wnd[0]/usr/ctxtKUNNR-LOW").Text = ""
+        .findById("wnd[0]/usr/ctxtAUFNR-LOW").Text = ""
+        .findById("wnd[0]/usr/ctxtEBELN-LOW").Text = ""
+        .findById("wnd[0]/usr/ctxtGRUND-LOW").Text = ""
+        .findById("wnd[0]/usr/ctxtKOSTL-LOW").Text = ""
+        .findById("wnd[0]/usr/txtMAT_KDAU-LOW").Text = ""
+        .findById("wnd[0]/usr/txtMAT_KDPO-LOW").Text = ""
+        .findById("wnd[0]/usr/ctxtBUDAT-LOW").Text = ""
+        .findById("wnd[0]/usr/ctxtBUDAT-HIGH").Text = ""
+        .findById("wnd[0]/usr/txtUSNAM-LOW").Text = ""
+        .findById("wnd[0]/usr/ctxtVGART-LOW").Text = ""
+        .findById("wnd[0]/usr/ctxtCPUDT-LOW").Text = ""
+        .findById("wnd[0]/usr/txtXBLNR-LOW").Text = ""
+
+        .findById("wnd[0]/usr/radRFLAT_L").Select
+        .findById("wnd[0]/usr/chkARCHIVE").Selected = False
+        .findById("wnd[0]/usr/chkDATABASE").Selected = True
+        .findById("wnd[0]/usr/chkSHORTDOC").Selected = False
+        
+        If AG = 1 Then
+            .findById("wnd[0]/usr/ctxtALV_DEF").Text = "/APAUTOMATAG"
+        Else
+            .findById("wnd[0]/usr/ctxtALV_DEF").Text = "/APAUTOMAT"
+        End If
+        
+        .findById("wnd[0]/usr/btn%_MATNR_%_APP_%-VALU_PUSH").press
+        Call Cod.ColarSAP(1)
+        
+        .findById("wnd[0]/tbar[1]/btn[8]").press
+        
+        On Error Resume Next
+        msg = .findById("wnd[0]/sbar").Text
+        
+        If msg <> Empty Then
+            SQL = "INSERT INTO ERRO_AP(ERRO, USUARIO) VALUES('" & msg & "', '" & gUsuario & "')"
+            Call ExecuteSQL
+        End If
+        
+    End With
+
+End Sub
+
+'// Função para conectar no SAP já abrindo a transação passada na variant
+Function Conexao_SAP(ByVal Transacao As String) As Boolean
+
+'Abre sistema SAP até a tela de inserção da transação
+    
+Dim Connection, SapGui, Appl, WshShell, proc
+        
+    Conexao_SAP = True
+        
+    On Error GoTo DESLOGADO
+        Set Session = GetObject("SAPGUI").GetScriptingEngine.Children(0).Children(0)
+    GoTo LOGADO
+    
+DESLOGADO:
+    
+    On Error GoTo -1
+    On Error GoTo Fim
+    
+    Set WshShell = CreateObject("WScript.Shell")
+
+    Set proc = WshShell.Exec("C:\Program Files (x86)\SAP\FrontEnd\SAPgui\saplogon.exe")
+       
+    Application.Wait Now + TimeValue("0:00:5")
+   
+    Set SapGui = GetObject("SAPGUI")
+    
+    Set Appl = SapGui.GetScriptingEngine
+  
+    Set Connection = Appl.OpenConnection("01 [BRF] - SAP ECC Produção -->Logon Automático<---", True)
+   
+    Set Session = Connection.Children(0)
+    
+LOGADO:
+    On Error GoTo -1
+         
+    Application.DisplayAlerts = False
+    On Error Resume Next
+    If Not IsObject(ApplicationSAP) Then
+       On Error Resume Next
+       Set SapGuiAuto = GetObject("SAPGUI")
+       If Err Then MsgBox ("Sistema SAP - Não encontrado..!")
+          Set ApplicationSAP = SapGuiAuto.GetScriptingEngine
+       If Err Then MsgBox ("Sistema SAP - Cancelado..!")
+    End If
+      
+    With Session
+       .findById("wnd[0]/tbar[0]/okcd").Text = "/n"
+       .findById("wnd[0]").sendVKey 0
+       .findById("wnd[0]/tbar[0]/okcd").Text = Transacao
+       .findById("wnd[0]").sendVKey 0
+    End With
+    
+    Exit Function
+    
+Fim:
+    
+    Conexao_SAP = False
+    
+    Call Cod.Erro("SAP não conectado. Tente novamente!")
+    
+End Function
