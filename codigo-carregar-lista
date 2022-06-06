@@ -1,0 +1,179 @@
+Sub CarregarLista()
+
+Dim i As Long
+Dim lista As ListItem
+Dim lote As String, status As String, sku As Variant, qtd As Double, kg As Double, turno As String, versao As String
+    
+    lote = txtLote
+    sku = txtSKU
+    versao = cbVersao.Text
+    
+    If lote = Empty Then lote = "%"
+    
+    Call Me.CarregarTextoTotalBase
+    
+    If ckT1.value = True And ckT2.value = True Then
+        turno = "1, 2"
+    ElseIf ckT1.value = True And ckT2.value = False Then
+        turno = "1"
+    ElseIf ckT1.value = False And ckT2.value = True Then
+        turno = "2"
+    Else
+        turno = "1, 2"
+    End If
+    
+    With Me.lista
+        
+        .ColumnHeaders(7).Text = "DATA"
+        
+        If opt0.value = False Then 'Não apontado
+            
+            If ckAgrupado.value = True Then 'Mostra os itens de forma agrupada
+                
+                .ColumnHeaders(7).Text = "PALLETS"
+                
+                SQL = "SELECT '#', B.CB, C.PRODUTO, B.LOTE, FORMATNUMBER(SUM(B.QTDE), 0), FORMATNUMBER(SUM(B.QTDE * C.KG)), "
+                SQL = SQL & "FORMATNUMBER(SUM(B.QTDE/C.PALLET),3), '-', '-', 'APONTADO SAP' "
+                SQL = SQL & "FROM (APSAP A INNER JOIN BD B ON A.CODIGO = B.CÓDIGO) "
+                SQL = SQL & "INNER JOIN PRODUTOS C ON B.CB = C.SKU WHERE "
+                SQL = SQL & "B.LOTE LIKE '" & lote & "' AND B.CANCELADO = 0 AND B.TURNO IN(" & turno & ") "
+                
+                If versao <> Empty Then
+                    SQL = SQL & "AND B.VERSAO = '" & versao & "' "
+                End If
+                
+                If sku <> Empty And VBA.IsNumeric(sku) = True Then
+                    SQL = SQL & "AND B.CB = " & sku & " "
+                End If
+        
+                SQL = SQL & "GROUP BY B.CB, C.PRODUTO, B.LOTE"
+            
+            Else 'Mostra os itens de forma desagrupada
+            
+                SQL = "SELECT A.CODIGO, B.CB, C.PRODUTO, B.LOTE, FORMATNUMBER(B.QTDE, 0), FORMATNUMBER((B.QTDE * C.KG)), A.DATA, A.HORA, A.USUARIO, "
+                SQL = SQL & "SWITCH(B.STATUS = 0,'NÃO APONTADO', B.STATUS = 1, 'APONTADO SAP', TRUE, 0) "
+                SQL = SQL & "FROM (APSAP A INNER JOIN BD B ON A.CODIGO = B.CÓDIGO) "
+                SQL = SQL & "INNER JOIN PRODUTOS C ON B.CB = C.SKU WHERE "
+                SQL = SQL & "B.LOTE LIKE '" & lote & "' AND B.CANCELADO = 0 AND B.TURNO IN(" & turno & ") "
+                
+                If versao <> Empty Then
+                    SQL = SQL & "AND B.VERSAO = '" & versao & "' "
+                End If
+                
+                If sku <> Empty And VBA.IsNumeric(sku) = True Then
+                    SQL = SQL & "AND B.CB = " & sku & " "
+                End If
+                
+                If ckOrdSKU.value = True Then
+                    SQL = SQL & "ORDER BY B.CB, A.CODIGO"
+                Else
+                    SQL = SQL & "ORDER BY A.CODIGO"
+                End If
+                
+            End If
+            
+        ElseIf opt0.value = True Then 'Apontado SAP
+            
+            If ckAgrupado.value = True Then 'Mostra os itens de forma agrupada
+                
+                .ColumnHeaders(7).Text = "PALLETS"
+                
+                SQL = "SELECT '#', A.CB, B.PRODUTO, A.LOTE, FORMATNUMBER(SUM(A.QTDE), 0), FORMATNUMBER(SUM(A.QTDE * B.KG)), "
+                SQL = SQL & "FORMATNUMBER(SUM(A.QTDE/B.PALLET),3), '-', '-', 'NÃO APONTADO' "
+                SQL = SQL & "FROM BD A INNER JOIN PRODUTOS B ON A.CB = B.SKU "
+                SQL = SQL & "WHERE A.STATUS = 0 AND A.CANCELADO = 0 "
+                SQL = SQL & "AND A.LOTE LIKE '" & lote & "' AND A.TURNO IN(" & turno & ") "
+                
+                If versao <> Empty Then
+                    SQL = SQL & "AND A.VERSAO = '" & versao & "' "
+                End If
+                
+                If sku <> Empty And VBA.IsNumeric(sku) = True Then
+                    SQL = SQL & "AND A.CB = " & sku & " "
+                End If
+                
+                SQL = SQL & "GROUP BY A.CB, B.PRODUTO, A.LOTE"
+                
+            Else 'Mostra os itens de forma desagrupada
+            
+                SQL = "SELECT A.CÓDIGO, A.CB, B.PRODUTO, A.LOTE, FORMATNUMBER(A.QTDE, 0), FORMATNUMBER(A.QTDE * B.KG) AS KG, A.DATA, A.HORA, A.USUARIO, "
+                SQL = SQL & "SWITCH(A.STATUS = 0,'NÃO APONTADO', A.STATUS = 1, 'APONTADO SAP', TRUE, 0) "
+                SQL = SQL & "FROM BD A INNER JOIN PRODUTOS B ON A.CB = B.SKU "
+                SQL = SQL & "WHERE A.STATUS = 0 AND A.CANCELADO = 0 "
+                SQL = SQL & "AND A.LOTE LIKE '" & lote & "' AND A.TURNO IN(" & turno & ") "
+                
+                If versao <> Empty Then
+                    SQL = SQL & "AND A.VERSAO = '" & versao & "' "
+                End If
+                
+                If sku <> Empty And VBA.IsNumeric(sku) = True Then
+                    SQL = SQL & "AND A.CB = " & sku & " "
+                End If
+                
+                If ckOrdSKU.value = True Then
+                    SQL = SQL & "ORDER BY A.CB, A.CÓDIGO"
+                Else
+                    SQL = SQL & "ORDER BY A.CÓDIGO"
+                End If
+                
+            End If
+            
+        End If
+        
+        .ListItems.Clear
+        txtBarra = Empty
+        
+        If Buscar = False Then Exit Sub
+        
+        For i = 0 To TotalRegistros
+        
+            Set lista = .ListItems.Add(Text:=resultado(0, i))
+            lista.ListSubItems.Add = resultado(1, i)
+            lista.ListSubItems.Add = resultado(2, i)
+            lista.ListSubItems.Add = resultado(3, i)
+            lista.ListSubItems.Add = resultado(4, i)
+            qtd = qtd + resultado(4, i)
+            lista.ListSubItems.Add = resultado(5, i)
+            kg = kg + resultado(5, i)
+            lista.ListSubItems.Add = resultado(6, i)
+            lista.ListSubItems.Add = resultado(7, i)
+            lista.ListSubItems.Add = resultado(8, i)
+            lista.ListSubItems.Add = resultado(9, i)
+            
+            If i = TotalRegistros Then
+                If ckAgrupado.value = True Then
+                    Set lista = .ListItems.Add(Text:=Empty)
+                    lista.ListSubItems.Add = Empty
+                    lista.ListSubItems.Add = Empty
+                    lista.ListSubItems.Add = "TOTAL"
+                    lista.ListSubItems.Add = VBA.FormatNumber(qtd, 0)
+                    lista.ListSubItems.Add = VBA.FormatNumber(kg)
+                    lista.ListSubItems.Add = Empty
+                    lista.ListSubItems.Add = Empty
+                    lista.ListSubItems.Add = Empty
+                    lista.ListSubItems.Add = Empty
+                End If
+            End If
+            
+        Next i
+        
+        If .ListItems.Count > 1 Then
+            txtBarra = "REGISTROS: " & TotalRegistros + 1
+        ElseIf .ListItems.Count = 1 Then
+            txtBarra = "REGISTRO: " & TotalRegistros + 1
+        End If
+        
+        txtBarra = txtBarra & " | " & "CAIXAS: " & VBA.FormatNumber(qtd, 0) & " | " & "KG: " & VBA.FormatNumber(kg)
+        txtBarra.BackColor = &H0&
+        
+        SQL = "SELECT FORMATNUMBER(SUM(A.QTDE/B.PALLET),3) FROM BD A INNER JOIN PRODUTOS B ON A.CB = B.SKU "
+        SQL = SQL & "WHERE A.LOTE = '" & lote & "' AND A.CANCELADO = 0"
+        If Buscar = True Then
+            txtTotalBase = txtTotalBase & " | " & "PALLETS: " & resultado(0, 0)
+        End If
+        
+        Call Me.CorStatus
+        
+    End With
+
+End Sub
