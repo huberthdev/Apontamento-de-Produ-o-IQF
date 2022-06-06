@@ -1,0 +1,120 @@
+Sub Salvar(ByVal X As Byte)
+
+Dim i As Long
+Dim lote As String
+    
+    texto = Empty
+    fSKU = Empty
+    
+    Set GrupoSKU = Nothing
+    Set codigos = Nothing
+    
+    Set GrupoSKU = New Collection
+    Set codigos = New Collection
+    
+    lote = txtLote
+    
+    With lista
+        
+        If .ListItems.Count = 0 Then Exit Sub
+        If opt1.value = True Then Exit Sub
+        
+        If ckAgrupado.value = True Then
+            Call Cod.Erro("A lista deve estar desagrupada!")
+            Exit Sub
+        End If
+        
+        If ckOrdSKU.value = True Then
+            ckOrdSKU.value = False
+        End If
+        
+        If X = 0 Then
+            Call Perguntar("Carregar dados para o SAP. Confirma?")
+            If Resposta = False Then Exit Sub
+        End If
+        
+        For i = 1 To .ListItems.Count
+            codigos.Add .ListItems(i).Text
+        Next i
+        
+        For i = 1 To codigos.Count
+            If i < codigos.Count Then
+                texto = texto & codigos.Item(i) & ", "
+            ElseIf i = codigos.Count Then
+                texto = texto & codigos.Item(i)
+            End If
+        Next i
+        
+        'Verifica se os dados foram de fato apontados no SAP - Caso sim o status no banco de dados é atualizado para 'APONTADO'
+        
+        If X = 1 Then GoTo Aqui
+        
+        If Comparar_MB51_Base(lote, texto) = False Then
+            
+            SQL = "INSERT INTO ERRO_AP(ERRO, USUARIO) VALUES('SALDO JÁ APONTADO', '" & gUsuario & "')"
+            Call ExecuteSQL
+            
+            Call Cod.Erro("O sistema detectou que o saldo de algum SKU já foi apontado. Favor conferir o SAP com o sistema. " & vbNewLine & vbNewLine & "Dúvidas entre em contato com o administrador!")
+            Exit Sub
+            
+        End If
+        
+        'Faz o apontamento na transação ZPP0279
+        'Verifica se o saldo realmente foi apontado e retorna verdadeiro ou falso
+        If CarregarZPP0279 = False Then GoTo Fim
+        '------------------------------------------------------------------------
+        
+        For i = 1 To GrupoSKU.Count
+            If i < GrupoSKU.Count Then
+                fSKU = fSKU & GrupoSKU.Item(i) & ", "
+            ElseIf i = GrupoSKU.Count Then
+                fSKU = fSKU & GrupoSKU.Item(i)
+            End If
+        Next i
+        
+Aqui:
+        
+        'De acordo com o retorno da função 'CarregarZPP0279' acima, aqui é feito a baixa do saldo no sistema (Marca os itens como 'APONTADO SAP')
+        SQL = "INSERT INTO APSAP(CODIGO, USUARIO) SELECT CÓDIGO, '" & gUsuario & "' FROM BD WHERE CÓDIGO IN(" & texto & ") "
+        If GrupoSKU.Count > 0 Then
+            SQL = SQL & "AND CB NOT IN (" & fSKU & ")"
+        End If
+        Call ExecuteSQL
+        
+        SQL = "UPDATE BD A INNER JOIN APSAP B ON A.CÓDIGO = B.CODIGO SET A.STATUS = 1 WHERE A.CANCELADO = 0 AND A.CÓDIGO IN(" & texto & ") "
+        If GrupoSKU.Count > 0 Then
+            SQL = SQL & "AND CB NOT IN (" & fSKU & ")"
+        End If
+        Call ExecuteSQL
+        '----------------------------------------------------------------------------------------------------------------------
+        
+        texto = Empty
+        Set codigos = Nothing
+          
+        Call Me.CarregarLista
+          
+        If GrupoSKU.Count > 0 Then
+
+            SQL = "INSERT INTO ERRO_AP(ERRO, USUARIO) VALUES('NÃO APONTADO: ' & '" & fSKU & "', '" & gUsuario & "')"
+            Call ExecuteSQL
+
+            Call Erro("Estes SKU's não foram apontados no SAP. Tente novamente!" & vbNewLine & vbNewLine & "SKU's: " & fSKU)
+            
+        End If
+        
+        If fSKU = Empty Then
+            txtBarra = "Apontamento realizado com sucesso!"
+            txtBarra.BackColor = &H8000&
+        Else
+            txtBarra = "Não Apontado: " & fSKU
+            txtBarra.BackColor = &HFF&
+        End If
+        
+        Exit Sub
+        
+Fim:
+            
+        txtBarra = "Apontamento não realizado"
+        txtBarra.BackColor = &HFF&
+            
+    End With
