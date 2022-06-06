@@ -1,0 +1,136 @@
+Sub CarregarFrame()
+
+Dim i As Long
+Dim topo(5) As Single, scrl As Single
+Dim img, prod, sku, ref, total As Variant
+Dim ctl As Control
+      
+Dim data As String
+Dim lote As String
+Dim turno As Byte
+
+Dim cImagens As String
+
+    data = VBA.Date
+    lote = txtLote
+    
+    If cbTurno.Text <> Empty Then
+        turno = cbTurno.Text
+    End If
+        
+    cImagens = ThisWorkbook.Path & "\img\produto\"
+    
+    topo(1) = 12 '1º topo da imagem
+    topo(2) = 12 '1º topo da descrição do produto
+    topo(3) = 30 '1º topo do SKU do produto
+    topo(4) = 45 '1º topo da referência do produto
+    topo(5) = 63 '1º topo do total de caixas apontadas do produto
+    
+    With frmApontamento.frameProd
+        
+        For Each ctl In .Controls
+           .Controls.Remove ctl.Name
+        Next ctl
+        
+        SQL = "SELECT B.PRODUTO, B.SKU, B.SIGLA, SUM(A.QTDE), SUM(A.QTDE * B.KG), SUM(A.QTDE/B.PALLET) "
+        SQL = SQL & "FROM BD A LEFT OUTER JOIN PRODUTOS B ON A.CB = B.SKU WHERE A.LOTE = '" & lote & "' AND A.CANCELADO = 0 "
+        If turno > 0 Then
+            SQL = SQL & "AND A.TURNO = " & turno & " "
+        End If
+        SQL = SQL & "GROUP BY B.PRODUTO, B.SKU, B.SIGLA ORDER BY SUM(A.QTDE) DESC"
+        If Buscar = False Then Exit Sub
+         
+        For i = 0 To TotalRegistros
+         
+            sku = resultado(1, i)
+         
+            'Cria o objeto imagem do produto
+            .Controls.Add "Forms.Image.1", "img" & sku, True
+            Set img = .Controls("img" & sku)
+        
+            With img
+                .BorderStyle = fmBorderStyleSingle
+                .BackStyle = fmBackStyleTransparent
+                .Left = 6
+                .Height = 66
+                .Width = 66
+                .Top = topo(1)
+                
+                If Cod.PastaExiste(cImagens, , sku & ".ico") = True Then
+                    .Picture = LoadPicture(cImagens & sku & ".ico")
+                    .PictureSizeMode = fmPictureSizeModeZoom
+                    .BorderStyle = fmBorderStyleNone
+                End If
+                
+            End With
+            
+            'Cria o campo da descrição do produto
+            .Controls.Add "Forms.Label.1", "prod" & sku, True
+            Set prod = .Controls("prod" & sku)
+            
+            With prod
+                .BorderStyle = fmBorderStyleNone
+                .Left = 78
+                .Height = 14.25
+                .Width = 222
+                .Top = topo(2)
+                If VBA.IsNull(resultado(0, i)) = False Then
+                    .Caption = resultado(0, i)
+                End If
+            End With
+            
+            'Cria o campo do SKU do produto
+            .Controls.Add "Forms.Label.1", "sku" & sku, True
+            Set sku = .Controls("sku" & sku)
+            
+            With sku
+                .BorderStyle = fmBorderStyleNone
+                .Left = 78
+                .Height = 14.25
+                .Width = 222
+                .Top = topo(3)
+                .Caption = "SKU: " & resultado(1, i)
+            End With
+            
+            'Cria o campo do REF do produto
+            .Controls.Add "Forms.Label.1", "ref" & sku, True
+            Set ref = .Controls("ref" & sku)
+            
+            With ref
+                .BorderStyle = fmBorderStyleNone
+                .Left = 78
+                .Height = 14.25
+                .Width = 222
+                .Top = topo(4)
+                If VBA.IsNull(resultado(2, i)) = False Then
+                    .Caption = "REF: " & resultado(2, i)
+                End If
+            End With
+            
+            'Cria o campo da Qtde do produto
+            .Controls.Add "Forms.Label.1", "total" & sku, True
+            Set total = .Controls("total" & sku)
+            
+            With total
+                .BorderStyle = fmBorderStyleNone
+                .Left = 78
+                .Height = 14.25
+                .Width = 222
+                .Top = topo(5)
+                .Caption = "CAIXAS: " & VBA.FormatNumber(resultado(3, i), 0) & " | " & "KG: " & VBA.FormatNumber(resultado(4, i), 2) & " | " & "PLT: " & VBA.FormatNumber(resultado(5, i), 2)
+                .ForeColor = &HC000&
+                .Font.Bold = True
+            End With
+            
+            topo(1) = topo(1) + 70
+            topo(2) = topo(2) + 70
+            topo(3) = topo(3) + 70
+            topo(4) = topo(4) + 70
+            topo(5) = topo(5) + 70
+            
+        Next i
+
+        .ScrollBars = fmScrollBarsVertical
+        .ScrollHeight = 71.5 * (TotalRegistros + 1) + 2
+    
+    End With
