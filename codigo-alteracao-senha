@@ -1,0 +1,30 @@
+Private Sub btnSalvar_Click()
+    
+Dim senhaAtual As String, senha1 As String, senha2 As String
+    
+    If gUsuario = "-" Or gUsuario = Empty Then Exit Sub
+    If Cod.ValidarCampos(frmAltSenha.Controls) = True Then Exit Sub
+    
+    senhaAtual = txtSenhaAtual
+    senha1 = txtSenha1
+    senha2 = txtSenha2
+    
+    SQL = "SELECT SENHA FROM USUARIO WHERE USUARIO = '" & gUsuario & "'"
+    If Buscar = False Then Exit Sub
+    
+    If resultado(0, 0) <> senhaAtual Then
+        Call Cod.Erro("'Senha atual' incorreta!")
+        Exit Sub
+    End If
+    
+    If senha1 <> senha2 Then
+        Call Cod.Erro("As senhas não conferem!")
+        Exit Sub
+    End If
+    
+    SQL = "UPDATE USUARIO SET SENHA = '" & senha1 & "' WHERE USUARIO = '" & gUsuario & "'"
+    Call ExecuteSQL("Senha alterada com sucesso!")
+    
+    Call Cod.LimparCampos(frmAltSenha, , txtSenhaAtual)
+    
+End Sub
