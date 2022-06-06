@@ -1,0 +1,199 @@
+Option Explicit
+
+Private Banco As New ADODB.Connection
+Private tabela As New ADODB.Recordset
+
+Public SQL As String
+Public TotalRegistros As Long
+Public TotalColuna As Integer
+Public resultado As Variant
+Public colunas() As Variant
+
+Public gCaminhoBanco, CaminhoBanco As String
+Public gSenha, Senha As String
+
+Private Function Criptografia(ByVal TextoSenha As String) As String
+
+    Dim CaractereTemporario As String
+    Dim i As Integer
+    
+    For i = 1 To Len(TextoSenha)
+
+        If VBA.asc(VBA.Mid$(TextoSenha, i, 1)) < 128 Then
+           CaractereTemporario = VBA.asc(VBA.Mid$(TextoSenha, i, 1)) + 128
+        ElseIf VBA.asc(VBA.Mid$(TextoSenha, i, 1)) > 128 Then
+           CaractereTemporario = VBA.asc(VBA.Mid$(TextoSenha, i, 1)) - 128
+        End If
+
+        Mid$(TextoSenha, i, 1) = VBA.Chr(CaractereTemporario)
+
+    Next i
+
+    Criptografia = TextoSenha
+
+End Function
+
+Function Conectar() As Boolean
+
+On Error GoTo Erro
+
+    Set Banco = New ADODB.Connection
+    
+    Senha = Empty
+    
+    If gCaminhoBanco = Empty Then
+       CaminhoBanco = ThisWorkbook.Path & "\bd\bd.accdb" 'Config.Range("HSS794").value
+       Senha = Config.Range("HST794").value
+       Senha = Criptografia(Senha)
+    Else
+       CaminhoBanco = gCaminhoBanco
+    End If
+    
+    With Banco
+         .Provider = "Microsoft.ACE.OLEDB.12.0"
+         .ConnectionString = "Data Source=" & CaminhoBanco & "; Jet OLEDB:Database Password=" & Senha
+         .Mode = adModeReadWrite
+         .Open
+    End With
+    
+Erro:
+
+    If Banco.State = adStateOpen Then
+       Conectar = True
+    Else
+       Conectar = False
+       Cod.Erro ("Não foi possível conectar ao banco de dados")
+    End If
+    
+End Function
+
+Sub ConfigConexaoBD()
+  
+Dim Senha As String
+Dim arquivo As String
+    
+    With frmBD
+        If ValidarCampos(.Controls) = True Then Exit Sub
+        arquivo = .txtArquivo
+        Senha = Criptografia(.txtSenha)
+    End With
+    
+    With Config
+        .Range("HSS794").value = arquivo
+        .Range("HST794").value = Senha
+    End With
+    
+    If Conectar = True Then
+        Call Cod.OK("Configurações validadas com sucesso...")
+        Call Desconectar
+        Unload frmBD
+        ActiveWorkbook.Save
+    End If
+
+End Sub
+
+Sub Desconectar()
+
+    If tabela.State = adStateOpen Then tabela.Close
+    If Banco.State = adStateOpen Then Banco.Close
+    
+    Set tabela = Nothing
+    Set Banco = Nothing
+    
+End Sub
+
+Function ExecuteSQL(Optional msg As String = Empty) As Boolean
+    
+On Error GoTo Erro
+    
+    ExecuteSQL = False
+    
+    If Conectar = False Then Exit Function
+    
+    Banco.Execute (SQL)
+    
+    Call Desconectar
+    
+    If msg <> Empty Then Cod.OK (msg)
+    
+    ExecuteSQL = True
+    
+    Exit Function
+Erro:
+
+    Call Desconectar
+    Cod.Erro (Err.Description)
+    
+End Function
+
+Function Buscar(Optional aba As String = Empty, _
+           Optional ColI As String = Empty, _
+           Optional LinI As Integer = Empty, _
+           Optional ColF As String = Empty, _
+           Optional msg As Boolean = False) As Boolean
+
+On Error GoTo Erro
+
+Dim i As Integer
+
+Buscar = False
+
+    Set tabela = New ADODB.Recordset
+    
+    Set resultado = Nothing
+    
+    Call Conectar
+    
+    tabela.CursorLocation = adUseClient
+    
+    tabela.Open SQL, Banco, adOpenStatic
+    
+    TotalRegistros = tabela.RecordCount
+    TotalColuna = tabela.Fields.Count
+    
+    If TotalRegistros = 0 Then
+    
+        TotalRegistros = -1
+        
+        If aba <> Empty Then
+           Call Cod.Borda(aba, ColI, LinI, ColF, 0)
+           Call Cod.LimparPlanilha(aba, ColI, LinI, ColF)
+        End If
+        
+        If msg = True Then Cod.OK ("Nenhum registro foi encontrado!")
+        GoTo Erro
+    End If
+    
+    TotalRegistros = TotalRegistros - 1
+    Buscar = True
+    
+    If aba = Empty Then
+    
+        resultado = tabela.GetRows
+        
+        ReDim colunas(tabela.Fields.Count)
+        For i = 0 To tabela.Fields.Count - 1
+            colunas(i) = VBA.Replace(tabela.Fields(i).Name, "_", " ")
+        Next i
+        
+    Else
+    
+        Call Cod.Borda(aba, ColI, LinI, ColF, 0)
+        
+        Call Cod.LimparPlanilha(aba, ColI, LinI, ColF)
+        
+        Sheets(aba).Range(ColI & LinI).CopyFromRecordset tabela
+        
+        Call Cod.Borda(aba, ColI, LinI, ColF, 1)
+        
+    End If
+    
+Erro:
+
+    Call Desconectar
+    
+    If Err Then
+       Cod.Erro (Err.Description)
+    End If
+    
+End Function
