@@ -1,0 +1,50 @@
+Sub CarregarLista()
+
+Dim i As Byte
+Dim lista As ListItem
+Dim sku As Variant, lote As String, turno As String, versao As String
+    
+    With Me
+        sku = .txtSKU
+        lote = .txtLote
+        turno = .cbTurno.Text
+        versao = .cbVersao.Text
+    End With
+    
+    If lote = Empty Then lote = "%"
+    
+    With Me.listaHR
+    
+        SQL = "SELECT A.HORA2, A.CÓDIGO, A.INTERVALO, FORMATNUMBER(SUM(B.QTDE),0), FORMATNUMBER(SUM(B.QTDE * C.KG),2), "
+        SQL = SQL & "FORMATNUMBER(SUM(B.QTDE/C.PALLET)) "
+        SQL = SQL & "FROM (HORARIO A INNER JOIN BD B ON A.HORA2 = FORMAT(B.HORA,'HH')) "
+        SQL = SQL & "LEFT OUTER JOIN PRODUTOS C ON B.CB = C.SKU WHERE B.LOTE LIKE '" & lote & "' "
+        
+        If versao <> Empty Then
+            SQL = SQL & "AND B.VERSAO = '" & versao & "' "
+        End If
+        
+        If sku <> Empty And VBA.IsNumeric(sku) Then
+            SQL = SQL & " AND B.CB = " & sku & " "
+        End If
+        
+        If turno <> Empty Then
+            SQL = SQL & "AND B.TURNO = " & turno & " "
+        End If
+        
+        SQL = SQL & "AND B.CANCELADO = 0 GROUP BY A.HORA2, A.CÓDIGO, A.INTERVALO ORDER BY A.CÓDIGO"
+        .ListItems.Clear
+        If Buscar = False Then Exit Sub
+        
+        For i = 0 To TotalRegistros
+            Set lista = .ListItems.Add(Text:=resultado(0, i))
+            lista.ListSubItems.Add = resultado(1, i)
+            lista.ListSubItems.Add = resultado(2, i)
+            lista.ListSubItems.Add = resultado(3, i)
+            lista.ListSubItems.Add = resultado(4, i)
+            lista.ListSubItems.Add = resultado(5, i)
+        Next i
+        
+    End With
+    
+End Sub
